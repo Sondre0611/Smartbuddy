@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartBuddy Chat</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f9f9f9;
+    }
+    #chat {
+      border: 1px solid #ccc;
+      padding: 1rem;
+      height: 400px;
+      overflow-y: auto;
+      background: white;
+    }
+    .message {
+      margin-bottom: 1rem;
+    }
+    .user {
+      color: blue;
+      font-weight: bold;
+    }
+    .bot {
+      color: green;
+      font-weight: bold;
+    }
+    .system {
+      color: gray;
+      font-style: italic;
+    }
+    #inputArea {
+      margin-top: 1rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+    #messageInput {
+      flex: 1;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    .feedback-buttons {
+      margin-top: 0.25rem;
+    }
+    .feedback-buttons button {
+      margin-right: 0.5rem;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>SmartBuddy Chat</h1>
+
+  <div id="chat"></div>
+
+  <div id="inputArea">
+    <input type="text" id="messageInput" placeholder="Skriv melding her..." autocomplete="off" />
+    <button id="sendBtn">Send</button>
+  </div>
+
+  <script>
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // Hold styr på siste melding og svar for feedback
+    let lastUserMessage = '';
+    let lastBotResponse = '';
+
+    function appendMessage(sender, text) {
+      const msgDiv = document.createElement('div');
+      msgDiv.classList.add('message');
+      msgDiv.classList.add(sender);
+      msgDiv.innerHTML = `<span>${sender === 'user' ? 'Du' : sender === 'bot' ? 'Buddy' : 'System'}:</span> ${text}`;
+      chatEl.appendChild(msgDiv);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function appendFeedbackButtons() {
+      // Fjern eventuelle eksisterende feedback-knapper først
+      const existingFb = chatEl.querySelector('.feedback-buttons');
+      if (existingFb) existingFb.remove();
+
+      const fbDiv = document.createElement('div');
+      fbDiv.classList.add('feedback-buttons');
+
+      const goodBtn = document.createElement('button');
+      goodBtn.textContent = '👍 Bra svar';
+      goodBtn.onclick = () => sendFeedback('good');
+
+      const badBtn = document.createElement('button');
+      badBtn.textContent = '👎 Dårlig svar';
+      badBtn.onclick = () => promptImprovedAnswer();
+
+      fbDiv.appendChild(goodBtn);
+      fbDiv.appendChild(badBtn);
+      chatEl.appendChild(fbDiv);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function sendFeedback(type, improvedAnswer = null) {
+      if (!lastUserMessage || !lastBotResponse) {
+        alert('Ingen melding å gi tilbakemelding på.');
+        return;
+      }
+      fetch('http://127.0.0.1:5000/v1/feedback', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          message: lastUserMessage,
+          response: lastBotResponse,
+          feedback: type,
+          improved_answer: improvedAnswer
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'OK') {
+          appendMessage('system', `Takk for tilbakemeldingen (${type})!`);
+          // Fjern feedback knapper etter tilbakemelding
+          const fb = chatEl.querySelector('.feedback-buttons');
+          if (fb) fb.remove();
+        } else {
+          appendMessage('system', 'Noe gikk galt med tilbakemeldingen.');
+        }
+      })
+      .catch(() => {
+        appendMessage('system', 'Kunne ikke sende tilbakemelding.');
+      });
+    }
+
+    function promptImprovedAnswer() {
+      const improved = prompt('Skriv et bedre svar som SmartBuddy kan lære av:');
+      if (improved && improved.trim().length > 0) {
+        sendFeedback('bad', improved.trim());
+      } else {
+        appendMessage('system', 'Tilbakemelding avbrutt.');
+      }
+    }
+
+    async function sendMessage() {
+      const message = inputEl.value.trim();
+      if (!message) return;
+      appendMessage('user', message);
+      inputEl.value = '';
+      lastUserMessage = message;
+
+      appendMessage('system', 'Buddy skriver...');
+
+      try {
+        const res = await fetch('http://127.0.0.1:5000/v1/chat/completions', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({message})
+        });
+        const data = await res.json();
+        // Fjern "Buddy skriver..."
+        const loadingEl = chatEl.querySelector('.system:last-child');
+        if (loadingEl) loadingEl.remove();
+
+        if (data.response) {
+          appendMessage('bot', data.response);
+          lastBotResponse = data.response;
+          appendFeedbackButtons();
+        } else if (data.error) {
+          appendMessage('system', `Feil: ${data.error}`);
+        }
+      } catch (e) {
+        // Fjern "Buddy skriver..."
+        const loadingEl = chatEl.querySelector('.system:last-child');
+        if (loadingEl) loadingEl.remove();
+        appendMessage('system', 'Kunne ikke kontakte serveren.');
+      }
+    }
+
+    sendBtn.onclick = sendMessage;
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  </script>
+</body>
+</html>
+
