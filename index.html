@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="no">
 <head>
@@ -7,54 +9,74 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 2rem auto;
+      max-width: 800px;
+      margin: 0 auto;
       padding: 1rem;
-      background: #f9f9f9;
+      background: #f0f0f0;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
     }
     #chat {
+      background: #fff;
       border: 1px solid #ccc;
+      border-radius: 5px;
       padding: 1rem;
       height: 400px;
       overflow-y: auto;
-      background: white;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
     }
     .message {
       margin-bottom: 1rem;
     }
     .user {
-      color: blue;
+      color: #0066cc;
       font-weight: bold;
     }
     .bot {
-      color: green;
+      color: #009933;
       font-weight: bold;
     }
     .system {
-      color: gray;
+      color: #999;
       font-style: italic;
     }
     #inputArea {
-      margin-top: 1rem;
       display: flex;
       gap: 0.5rem;
+      margin-top: 1rem;
     }
     #messageInput {
       flex: 1;
       padding: 0.5rem;
       font-size: 1rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
     }
     button {
       padding: 0.5rem 1rem;
       font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background: #0066cc;
+      color: white;
       cursor: pointer;
     }
+    button:hover {
+      background: #004999;
+    }
     .feedback-buttons {
-      margin-top: 0.25rem;
+      margin-top: 0.5rem;
     }
     .feedback-buttons button {
       margin-right: 0.5rem;
       font-size: 0.9rem;
+      background: #e0e0e0;
+      color: #333;
+    }
+    .feedback-buttons button:hover {
+      background: #ccc;
     }
   </style>
 </head>
@@ -64,7 +86,7 @@
   <div id="chat"></div>
 
   <div id="inputArea">
-    <input type="text" id="messageInput" placeholder="Skriv melding her..." autocomplete="off" />
+    <input type="text" id="messageInput" placeholder="Skriv en melding..." />
     <button id="sendBtn">Send</button>
   </div>
 
@@ -73,24 +95,18 @@
     const inputEl = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
 
-    // Hold styr på siste melding og svar for feedback
     let lastUserMessage = '';
     let lastBotResponse = '';
 
     function appendMessage(sender, text) {
       const msgDiv = document.createElement('div');
       msgDiv.classList.add('message');
-      msgDiv.classList.add(sender);
-      msgDiv.innerHTML = `<span>${sender === 'user' ? 'Du' : sender === 'bot' ? 'Buddy' : 'System'}:</span> ${text}`;
+      msgDiv.innerHTML = `<span class="${sender}">${sender === 'user' ? 'Du' : sender === 'bot' ? 'Buddy' : 'System'}:</span> ${text}`;
       chatEl.appendChild(msgDiv);
       chatEl.scrollTop = chatEl.scrollHeight;
     }
 
     function appendFeedbackButtons() {
-      // Fjern eventuelle eksisterende feedback-knapper først
-      const existingFb = chatEl.querySelector('.feedback-buttons');
-      if (existingFb) existingFb.remove();
-
       const fbDiv = document.createElement('div');
       fbDiv.classList.add('feedback-buttons');
 
@@ -109,11 +125,9 @@
     }
 
     function sendFeedback(type, improvedAnswer = null) {
-      if (!lastUserMessage || !lastBotResponse) {
-        alert('Ingen melding å gi tilbakemelding på.');
-        return;
-      }
-      fetch('http://127.0.0.1:5000/v1/feedback', {
+      if (!lastUserMessage || !lastBotResponse) return;
+
+      fetch('/v1/feedback', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -127,11 +141,8 @@
       .then(data => {
         if (data.status === 'OK') {
           appendMessage('system', `Takk for tilbakemeldingen (${type})!`);
-          // Fjern feedback knapper etter tilbakemelding
-          const fb = chatEl.querySelector('.feedback-buttons');
-          if (fb) fb.remove();
         } else {
-          appendMessage('system', 'Noe gikk galt med tilbakemeldingen.');
+          appendMessage('system', 'Feil ved tilbakemelding.');
         }
       })
       .catch(() => {
@@ -140,7 +151,7 @@
     }
 
     function promptImprovedAnswer() {
-      const improved = prompt('Skriv et bedre svar som SmartBuddy kan lære av:');
+      const improved = prompt('Skriv et bedre svar SmartBuddy kan lære av:');
       if (improved && improved.trim().length > 0) {
         sendFeedback('bad', improved.trim());
       } else {
@@ -151,6 +162,7 @@
     async function sendMessage() {
       const message = inputEl.value.trim();
       if (!message) return;
+
       appendMessage('user', message);
       inputEl.value = '';
       lastUserMessage = message;
@@ -158,28 +170,23 @@
       appendMessage('system', 'Buddy skriver...');
 
       try {
-        const res = await fetch('http://127.0.0.1:5000/v1/chat/completions', {
+        const res = await fetch('/v1/chat/completions', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({message})
         });
         const data = await res.json();
-        // Fjern "Buddy skriver..."
-        const loadingEl = chatEl.querySelector('.system:last-child');
-        if (loadingEl) loadingEl.remove();
-
+        chatEl.lastChild.remove(); // fjern "Buddy skriver..."
         if (data.response) {
           appendMessage('bot', data.response);
           lastBotResponse = data.response;
           appendFeedbackButtons();
-        } else if (data.error) {
-          appendMessage('system', `Feil: ${data.error}`);
+        } else {
+          appendMessage('system', 'Feil fra server.');
         }
-      } catch (e) {
-        // Fjern "Buddy skriver..."
-        const loadingEl = chatEl.querySelector('.system:last-child');
-        if (loadingEl) loadingEl.remove();
-        appendMessage('system', 'Kunne ikke kontakte serveren.');
+      } catch {
+        chatEl.lastChild.remove();
+        appendMessage('system', 'Klarte ikke å kontakte serveren.');
       }
     }
 
@@ -190,4 +197,3 @@
   </script>
 </body>
 </html>
-
